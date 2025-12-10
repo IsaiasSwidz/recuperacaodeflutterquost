@@ -1,40 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'screens/dashboard_screen.dart';
-import 'services/notification_service.dart';
-import 'services/preferences_service.dart';
-import 'services/database_service.dart';
+import 'presentation/screens/dashboard_screen.dart';
+import 'presentation/screens/preferences_screen.dart';
+import 'presentation/screens/history_screen.dart';
+import 'presentation/providers/monitoring_provider.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  
-  // Initialize services
-  await NotificationService.initialize();
-  await DatabaseService.initialize();
-  
+void main() {
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => PreferencesService()),
-        ChangeNotifierProvider(create: (_) => DatabaseService()),
+        ChangeNotifierProvider(create: (_) => MonitoringProvider()),
       ],
-      child: const MonitoringAlertsApp(),
+      child: MyApp(),
     ),
   );
 }
 
-class MonitoringAlertsApp extends StatelessWidget {
-  const MonitoringAlertsApp({Key? key}) : super(key: key);
-
+class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Monitoring Alerts App',
+      title: 'Monitoramento e Alertas',
       theme: ThemeData(
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
-      home: const DashboardScreen(),
+      home: DashboardScreen(),
+      routes: {
+        '/dashboard': (context) => DashboardScreen(),
+        '/preferences': (context) => PreferencesScreen(),
+        '/history': (context) => HistoryScreen(),
+      },
       debugShowCheckedModeBanner: false,
     );
   }
