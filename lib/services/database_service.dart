@@ -1,100 +1,72 @@
-/// Serviço de Banco de Dados - Gerencia eventos no SQLite
-/// 
-/// Esta classe gerencia o armazenamento local dos eventos de alerta
-/// usando SQLite, permitindo operações CRUD e notificando os ouvintes
-/// quando os dados são alterados
-import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import '../models/event.dart';
+import '../models/alert_model.dart';
 
-class DatabaseService extends ChangeNotifier {
-  static Database? _database;
-
-  /// Inicializa o banco de dados
-  /// 
-  /// Abre ou cria o banco de dados SQLite para armazenamento local
-  static Future<void> initialize() async {
+class DatabaseService {
+  static const String _databaseName = 'monitoring.db';
+  static const int _databaseVersion = 1;
+  
+  static final DatabaseService _instance = DatabaseService._internal();
+  factory DatabaseService() => _instance;
+  
+  Database? _database;
+  
+  DatabaseService._internal();
+  
+  Future<Database> get database async {
+    if (_database != null) return _database!;
     _database = await _initDatabase();
+    return _database!;
   }
-
-  /// Inicializa a instância do banco de dados
-  /// 
-  /// Cria o caminho para o banco de dados e configura a tabela de eventos
-  static Future<Database> _initDatabase() async {
-    String path = join(await getDatabasesPath(), 'events.db');
+  
+  Future<Database> _initDatabase() async {
+    final path = join(await getDatabasesPath(), _databaseName);
+    
     return await openDatabase(
       path,
-      version: 1,
-      onCreate: _createTable,
+      version: _databaseVersion,
+      onCreate: _onCreate,
     );
   }
-
-  /// Cria a tabela de eventos no banco de dados
-  /// 
-  /// Define a estrutura da tabela para armazenar eventos de alerta
-  static Future<void> _createTable(Database db, int version) async {
+  
+  Future<void> _onCreate(Database db, int version) async {
     await db.execute('''
-      CREATE TABLE events(
+      CREATE TABLE alerts(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         type TEXT NOT NULL,
-        timestamp TEXT NOT NULL,
-        description TEXT
+        triggerTime TEXT NOT NULL,
+        processedTime TEXT,
+        isCritical INTEGER NOT NULL
       )
     ''');
   }
-
-  /// Insere um novo evento no banco de dados
-  /// 
-  /// Converte o objeto Event para mapa e o insere na tabela
-  /// Notifica os ouvintes após a inserção
-  Future<int> insertEvent(Event event) async {
-    final db = _database;
-    if (db == null) return Future.error('Database not initialized');
-    
-    final id = await db.insert(
-      'events',
-      event.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
+  
+  Future<int> insertAlert(AlertModel alert) async {
+    final db = await database;
+    return await db.insert('alerts', alert.toMap());
+  }
+  
+  Future<List<AlertModel>> getAlerts() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'alerts',
+      orderBy: 'triggerTime DESC',
     );
     
-    notifyListeners();
-    return id;
-  }
-
-  /// Obtém todos os eventos do banco de dados
-  /// 
-  /// Retorna uma lista de eventos ordenados por timestamp em ordem decrescente
-  Future<List<Event>> getAllEvents() async {
-    final db = _database;
-    if (db == null) return [];
-    
-    final List<Map<String, dynamic>> maps = await db.query('events', orderBy: 'timestamp DESC');
-    
     return List.generate(maps.length, (i) {
-      return Event.fromMap(maps[i]);
+      return AlertModel.fromMap(maps[i]);
     });
   }
-
-  /// Exclui um evento específico do banco de dados
-  /// 
-  /// Remove o evento com o ID fornecido e notifica os ouvintes
-  Future<void> deleteEvent(int id) async {
-    final db = _database;
-    if (db == null) return;
-    
-    await db.delete('events', where: 'id = ?', whereArgs: [id]);
-    notifyListeners();
+  
+  Future<int> clearAlerts() async {
+    final db = await database;
+    return await db.delete('alerts');
   }
-
-  /// Limpa todos os eventos do banco de dados
-  /// 
-  /// Remove todos os registros da tabela de eventos e notifica os ouvintes
-  Future<void> clearAllEvents() async {
-    final db = _database;
-    if (db == null) return;
-    
-    await db.delete('events');
-    notifyListeners();
+  
+  Future<void> close() async {
+    if (_database != null) {
+      await _database!.close();
+      _database = null;
+    }
   }
 }

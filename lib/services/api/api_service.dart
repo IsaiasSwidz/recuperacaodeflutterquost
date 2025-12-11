@@ -14,7 +14,7 @@ class ApiService {
       if (response.statusCode == 200) {
         return json.decode(response.body);
       } else {
-        throw Exception('Failed to load system status');
+        throw Exception('Failed to load system status: ${response.statusCode}');
       }
     } catch (e) {
       throw Exception('Connection error: $e');
@@ -29,11 +29,12 @@ class ApiService {
         body: json.encode({
           'alertType': alertType,
           'timestamp': DateTime.now().toIso8601String(),
+          'title': 'Alert from Monitoring App',
         }),
       );
       
       if (response.statusCode != 201) {
-        throw Exception('Failed to send alert');
+        throw Exception('Failed to send alert: ${response.statusCode}');
       }
     } catch (e) {
       throw Exception('Failed to send alert: $e');

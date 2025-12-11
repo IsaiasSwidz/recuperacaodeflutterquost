@@ -1,19 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:projetorecuperacaomatheusquost/services/api/api_service.dart';
 import 'package:provider/provider.dart';
-import '../services/notification_service.dart';
-import '../services/database_service.dart';
-import '../services/preferences_service.dart';
-import '../services/api_service.dart';
-import '../models/event.dart';
-import '../models/preferences.dart';
+import '../../services/notification_service.dart';
+import '../../services/database_service.dart' hide DatabaseService;
+import '../../services/preferences_service.dart';
+import '../../services/api_service.dart';
+import '../../data/models/alert_model.dart';
+import '../../data/models/preferences_model.dart';
 import 'preferences_screen.dart';
 import 'history_screen.dart';
 
-/// Tela de Dashboard - Ponto central do sistema de monitoramento
-/// 
-/// Esta tela permite ao usuário visualizar o estado atual do sistema,
-/// acionar o botão de pânico, visualizar o status da API e configurar
-/// as preferências de notificação
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({Key? key}) : super(key: key);
 
@@ -22,7 +18,7 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  bool _systemActive = false;
+  bool _systemActive = true;
   bool _apiLoading = false;
   Map<String, dynamic>? _apiData;
   String _apiError = '';
@@ -31,9 +27,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _fetchApiData();
+    _initializeNotifications();
   }
 
-  /// Busca dados da API para demonstrar a integração
+  Future<void> _initializeNotifications() async {
+    await NotificationService().initialize();
+  }
+
   Future<void> _fetchApiData() async {
     setState(() {
       _apiLoading = true;
@@ -41,18 +41,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
 
     try {
-      final data = await ApiService.fetchUser(1);
-      if (data != null) {
-        setState(() {
-          _apiData = data;
-          _apiLoading = false;
-        });
-      } else {
-        setState(() {
-          _apiError = 'Falha ao carregar dados da API';
-          _apiLoading = false;
-        });
-      }
+      final apiService = ApiService();
+      final data = await apiService.fetchSystemStatus();
+      
+      setState(() {
+        _apiData = data;
+        _apiLoading = false;
+      });
     } catch (e) {
       setState(() {
         _apiError = 'Erro: $e';
@@ -61,45 +56,63 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  /// Simula o disparo de um alerta/panico
-  /// 
-  /// Esta função registra o evento no banco de dados e envia uma notificação
-  /// com base nas preferências do usuário
   Future<void> _simulateAlert() async {
-    final prefs = context.read<PreferencesService>().preferences;
-    final dbService = context.read<DatabaseService>();
-    
-    // Cria registro do evento
-    final event = Event(
-      type: 'ALERT',
-      timestamp: DateTime.now(),
-      description: 'Simulated panic button alert',
-    );
-    
-    await dbService.insertEvent(event);
-    
-    // Mostra notificação com base nas preferências
-    if (prefs.criticalMode) {
-      await NotificationService.showCriticalNotification(
-        title: 'CRITICAL ALERT',
-        body: 'Panic button pressed! Emergency assistance required.',
-        payload: 'alert_event',
+    try {
+      final prefs = context.read<PreferencesService>().preferences;
+      final dbService = DatabaseService();
+      
+      // Criar alerta
+      final alert = AlertModel(
+        type: 'ALERTE DE PÂNICO',
+        triggerTime: DateTime.now(),
+        isCritical: prefs.criticalMode, description: '',
       );
-    } else {
-      await NotificationService.showNotification(
-        title: 'ALERT',
-        body: 'Alert triggered from monitoring app',
-        payload: 'alert_event',
+      
+      // Salvar no banco
+      await dbService.insertAlert(alert);
+      
+      // Enviar para API (opcional)
+      try {
+        await ApiService().sendAlert('Panic Button Pressed');
+      } catch (e) {
+        print('API offline: $e');
+      }
+      
+      // Mostrar notificação
+      await NotificationService().showAlertNotification(
+        title: prefs.criticalMode ? 'ALERTA CRÍTICO!' : 'Alerta Disparado',
+        body: 'Botão de pânico acionado - ${DateTime.now().toString()}',
+        sound: prefs.soundEnabled,
+        vibration: prefs.vibrationEnabled,
+        critical: prefs.criticalMode,
+      );
+      
+      // Feedback visual
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Alerta disparado com sucesso!'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 2),
+          action: SnackBarAction(
+            label: 'Ver Histórico',
+            textColor: Colors.white,
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const HistoryScreen()),
+              );
+            },
+          ),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro ao disparar alerta: $e'),
+          backgroundColor: Colors.orange,
+        ),
       );
     }
-    
-    // Mostra feedback visual
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Alerta disparado com sucesso!'),
-        backgroundColor: Colors.red,
-      ),
-    );
   }
 
   @override
@@ -108,67 +121,69 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Monitoring Dashboard'),
+        title: const Text('Dashboard de Monitoramento'),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const PreferencesScreen()),
-              );
-            },
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const PreferencesScreen()),
+            ),
+            tooltip: 'Configurações',
           ),
           IconButton(
             icon: const Icon(Icons.history),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const HistoryScreen()),
-              );
-            },
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const HistoryScreen()),
+            ),
+            tooltip: 'Histórico',
           ),
         ],
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Status do Sistema
             Card(
+              elevation: 4,
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'System Status',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      'Status do Sistema',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
                     Row(
                       children: [
-                        Container(
-                          width: 12,
-                          height: 12,
-                          decoration: BoxDecoration(
-                            color: _systemActive ? Colors.green : Colors.grey,
-                            shape: BoxShape.circle,
-                          ),
+                        Icon(
+                          _systemActive ? Icons.check_circle : Icons.error,
+                          color: _systemActive ? Colors.green : Colors.red,
+                          size: 30,
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 12),
                         Text(
-                          _systemActive ? 'ACTIVE' : 'INACTIVE',
+                          _systemActive ? 'SISTEMA ATIVO' : 'SISTEMA INATIVO',
                           style: TextStyle(
-                            color: _systemActive ? Colors.green : Colors.grey,
+                            fontSize: 18,
                             fontWeight: FontWeight.bold,
+                            color: _systemActive ? Colors.green : Colors.red,
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 16),
                     SwitchListTile(
-                      title: const Text('System Active'),
+                      title: const Text('Ativar/Desativar Sistema'),
+                      subtitle: const Text('Controla todo o monitoramento'),
                       value: _systemActive,
                       onChanged: (value) {
                         setState(() {
@@ -180,102 +195,201 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            
+            const SizedBox(height: 20),
+            
+            // Integração com API
             Card(
+              elevation: 4,
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'API Integration Test',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      'Status da API',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
                     if (_apiLoading)
-                      const LinearProgressIndicator()
+                      const Center(
+                        child: Column(
+                          children: [
+                            CircularProgressIndicator(),
+                            SizedBox(height: 8),
+                            Text('Conectando à API...'),
+                          ],
+                        ),
+                      )
                     else if (_apiError.isNotEmpty)
-                      Text(
-                        _apiError,
-                        style: const TextStyle(color: Colors.red),
+                      Column(
+                        children: [
+                          const Icon(Icons.error, color: Colors.red, size: 40),
+                          const SizedBox(height: 8),
+                          Text(
+                            _apiError,
+                            style: const TextStyle(color: Colors.red),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
                       )
                     else if (_apiData != null)
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('User: ${_apiData!['name']}'),
-                          Text('Email: ${_apiData!['email']}'),
-                          Text('Phone: ${_apiData!['phone']}'),
+                          const Icon(Icons.check_circle, color: Colors.green, size: 40),
                           const SizedBox(height: 8),
-                          ElevatedButton(
-                            onPressed: _fetchApiData,
-                            child: const Text('Refresh API Data'),
+                          Text(
+                            'API Conectada com Sucesso',
+                            style: TextStyle(
+                              color: Colors.green[700],
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
+                          const SizedBox(height: 8),
+                          Text('Dados recebidos: ${_apiData!['title'] ?? 'Teste'}'),
+                          Text('Status: ${_apiData!['completed'] == true ? 'Concluído' : 'Pendente'}'),
+                        ],
+                      )
+                    else
+                      const Column(
+                        children: [
+                          Icon(Icons.cloud_off, color: Colors.grey, size: 40),
+                          SizedBox(height: 8),
+                          Text('API não conectada'),
                         ],
                       ),
+                    
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      onPressed: _fetchApiData,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Testar Conexão com API'),
+                    ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            
+            const SizedBox(height: 20),
+            
+            // Botão de Pânico
             Card(
+              elevation: 4,
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Notification Preferences',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    ListTile(
-                      title: const Text('Vibration'),
-                      trailing: Switch(
-                        value: prefs.vibrationEnabled,
-                        onChanged: (value) => 
-                          context.read<PreferencesService>().toggleVibration(),
+                      'Ações de Emergência',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                    ListTile(
-                      title: const Text('Sound'),
-                      trailing: Switch(
-                        value: prefs.soundEnabled,
-                        onChanged: (value) => 
-                          context.read<PreferencesService>().toggleSound(),
-                      ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Use este botão em situações críticas para acionar alertas imediatamente.',
+                      style: TextStyle(color: Colors.grey),
                     ),
-                    ListTile(
-                      title: const Text('Banner'),
-                      trailing: Switch(
-                        value: prefs.bannerEnabled,
-                        onChanged: (value) => 
-                          context.read<PreferencesService>().toggleBanner(),
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      onPressed: _simulateAlert,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(double.infinity, 50),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
-                    ),
-                    const Divider(),
-                    SwitchListTile(
-                      title: const Text('Critical Mode'),
-                      subtitle: const Text('Force alerts even in silent mode'),
-                      value: prefs.criticalMode,
-                      onChanged: (value) => 
-                        context.read<PreferencesService>().toggleCriticalMode(),
+                      icon: const Icon(Icons.warning),
+                      label: const Text(
+                        'BOTÃO DE PÂNICO',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _simulateAlert,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-              ),
-              child: const Text(
-                'SIMULATE ALERT / PANIC BUTTON',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            
+            const SizedBox(height: 20),
+            
+            // Configurações Rápidas
+            Card(
+              elevation: 4,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Configurações Rápidas',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SwitchListTile(
+                      title: const Text('Modo Crítico'),
+                      subtitle: const Text('Alertas mesmo em modo silencioso'),
+                      value: prefs.criticalMode,
+                      onChanged: (value) => 
+                        context.read<PreferencesService>().toggleCriticalMode(),
+                    ),
+                    const Divider(),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        Column(
+                          children: [
+                            IconButton(
+                              icon: Icon(
+                                prefs.vibrationEnabled ? Icons.vibration : Icons.vibration_off,
+                                color: prefs.vibrationEnabled ? Colors.blue : Colors.grey,
+                              ),
+                              onPressed: () => 
+                                context.read<PreferencesService>().toggleVibration(),
+                            ),
+                            const Text('Vibração'),
+                          ],
+                        ),
+                        Column(
+                          children: [
+                            IconButton(
+                              icon: Icon(
+                                prefs.soundEnabled ? Icons.volume_up : Icons.volume_off,
+                                color: prefs.soundEnabled ? Colors.blue : Colors.grey,
+                              ),
+                              onPressed: () => 
+                                context.read<PreferencesService>().toggleSound(),
+                            ),
+                            const Text('Som'),
+                          ],
+                        ),
+                        Column(
+                          children: [
+                            IconButton(
+                              icon: Icon(
+                                prefs.bannerEnabled ? Icons.notifications_active : Icons.notifications_off,
+                                color: prefs.bannerEnabled ? Colors.blue : Colors.grey,
+                              ),
+                              onPressed: () => 
+                                context.read<PreferencesService>().toggleBanner(),
+                            ),
+                            const Text('Notificação'),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ],

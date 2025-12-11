@@ -1,73 +1,73 @@
-/// Serviço de API - Gerencia requisições HTTP para APIs externas
-/// 
-/// Esta classe fornece métodos para realizar requisições HTTP para APIs externas,
-/// demonstrando a integração com serviços web, como parte dos requisitos do projeto
-import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart';
+import '../data/models/alert_model.dart';
 
-class ApiService {
-  static const String baseUrl = 'https://jsonplaceholder.typicode.com';
-
-  /// Obtém dados de usuário da API pública
-  /// 
-  /// Faz uma requisição GET para obter informações de um usuário específico
-  static Future<Map<String, dynamic>?> fetchUser(int userId) async {
-    try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/users/$userId'),
-        headers: {'Content-Type': 'application/json'},
-      );
-
-      if (response.statusCode == 200) {
-        return json.decode(response.body);
-      } else {
-        throw Exception('Falha ao carregar usuário: ${response.statusCode}');
-      }
-    } catch (e) {
-      print('Erro ao buscar usuário: $e');
-      return null;
-    }
+class DatabaseService {
+  static const String _databaseName = 'monitoring.db';
+  static const int _databaseVersion = 1;
+  
+  static final DatabaseService _instance = DatabaseService._internal();
+  factory DatabaseService() => _instance;
+  
+  Database? _database;
+  
+  DatabaseService._internal();
+  
+  Future<Database> get database async {
+    if (_database != null) return _database!;
+    _database = await _initDatabase();
+    return _database!;
   }
-
-  /// Cria um novo post na API pública (recurso de teste)
-  /// 
-  /// Faz uma requisição POST para criar um novo post na API
-  static Future<Map<String, dynamic>?> createPost(String title, String body, int userId) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/posts'),
-        headers: {'Content-Type': 'application/json'},
-      );
-
-      if (response.statusCode == 201) {
-        return json.decode(response.body);
-      } else {
-        throw Exception('Falha ao criar post: ${response.statusCode}');
-      }
-    } catch (e) {
-      print('Erro ao criar post: $e');
-      return null;
-    }
+  
+  Future<Database> _initDatabase() async {
+    // CORREÇÃO: Use openDatabase diretamente, não databaseFactory.openDatabase
+    final path = join(await getDatabasesPath(), _databaseName);
+    
+    return await openDatabase(
+      path,
+      version: _databaseVersion,
+      onCreate: _onCreate,
+    );
   }
-
-  /// Obtém posts da API pública
-  /// 
-  /// Faz uma requisição GET para obter uma lista de posts
-  static Future<List<dynamic>?> fetchPosts() async {
-    try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/posts'),
-        headers: {'Content-Type': 'application/json'},
-      );
-
-      if (response.statusCode == 200) {
-        return json.decode(response.body);
-      } else {
-        throw Exception('Falha ao carregar posts: ${response.statusCode}');
-      }
-    } catch (e) {
-      print('Erro ao buscar posts: $e');
-      return null;
+  
+  Future<void> _onCreate(Database db, int version) async {
+    await db.execute('''
+      CREATE TABLE alerts(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL,
+        triggerTime TEXT NOT NULL,
+        processedTime TEXT,
+        isCritical INTEGER NOT NULL
+      )
+    ''');
+  }
+  
+  Future<int> insertAlert(AlertModel alert) async {
+    final db = await database;
+    return await db.insert('alerts', alert.toMap());
+  }
+  
+  Future<List<AlertModel>> getAlerts() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'alerts',
+      orderBy: 'triggerTime DESC',
+    );
+    
+    return List.generate(maps.length, (i) {
+      return AlertModel.fromMap(maps[i]);
+    });
+  }
+  
+  Future<int> clearAlerts() async {
+    final db = await database;
+    return await db.delete('alerts');
+  }
+  
+  Future<void> close() async {
+    if (_database != null) {
+      await _database!.close();
+      _database = null;
     }
   }
 }

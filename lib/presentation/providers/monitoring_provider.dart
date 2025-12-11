@@ -47,7 +47,7 @@ class MonitoringProvider with ChangeNotifier {
     final alert = AlertModel(
       type: type,
       triggerTime: DateTime.now(),
-      isCritical: _preferences.criticalMode,
+      isCritical: _preferences.criticalMode, description: '',
     );
     
     // Salvar no banco local

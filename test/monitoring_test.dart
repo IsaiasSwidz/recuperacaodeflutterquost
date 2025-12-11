@@ -11,7 +11,7 @@ void main() {
         type: 'Test Alert',
         triggerTime: DateTime(2025, 12, 9, 10, 30, 0),
         processedTime: DateTime(2025, 12, 9, 10, 35, 0),
-        isCritical: true,
+        isCritical: true, description: '',
       );
       
       final map = alert.toMap();
@@ -26,7 +26,7 @@ void main() {
       final alert = AlertModel(
         type: 'Immediate Alert',
         triggerTime: DateTime.now(),
-        isCritical: false,
+        isCritical: false, description: '',
       );
       
       final map = alert.toMap();
@@ -70,7 +70,7 @@ void main() {
       final alert = AlertModel(
         type: 'Test',
         triggerTime: now,
-        isCritical: false,
+        isCritical: false, description: '',
       );
       
       expect(alert.triggerTime.isBefore(now.add(Duration(seconds: 1))), equals(true));
@@ -81,7 +81,7 @@ void main() {
       final alert = AlertModel(
         type: 'Critical Alert',
         triggerTime: DateTime.now(),
-        isCritical: true,
+        isCritical: true, description: '',
       );
       
       expect(alert.isCritical, equals(true));

@@ -5,12 +5,16 @@ class AlertModel {
   final DateTime? processedTime;
   final bool isCritical;
   
+  // Adicione um campo description se seu código precisa
+  final String? description;
+  
   AlertModel({
     this.id,
     required this.type,
     required this.triggerTime,
     this.processedTime,
-    this.isCritical = false, required String description,
+    this.isCritical = false,
+    this.description,
   });
   
   Map<String, dynamic> toMap() {
@@ -31,7 +35,7 @@ class AlertModel {
       processedTime: map['processedTime'] != null 
           ? DateTime.parse(map['processedTime']) 
           : null,
-      isCritical: map['isCritical'] == 1, description: '',
+      isCritical: map['isCritical'] == 1,
     );
   }
 }
