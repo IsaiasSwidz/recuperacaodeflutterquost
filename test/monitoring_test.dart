@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../data/models/alert_model.dart';
-import '../data/models/preferences_model.dart';
+import '../lib/data/models/alert_model.dart';
+import '../lib/data/models/preferences_model.dart';
 
 void main() {
   group('Model Tests', () {
